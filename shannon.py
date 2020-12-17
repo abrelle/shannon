@@ -4,6 +4,8 @@ from bitarray import bitarray
 
 Base = 2
 Byte = 8
+chunk_size = 16
+max_buffer_size = 512
 
 
 def read_input_from_file(filename: str) -> str:
@@ -24,7 +26,6 @@ def frequency_table(word: list) -> dict:
         p = word.count(letter)
         probTable.update({letter: p})  # e.g. {'a':0.25}
 
-    # PATAISYTA DALIS. Buvo klaida nes grazindavo sarasa, o ne zodyna
     sorted_tuples = sorted(probTable.items(), key=lambda x: x[1], reverse=True)  # grazina surikiuota poru SARASA
     sorted_probTable = {k: v for k, v in sorted_tuples}  # is poru SARASO i zodyna
 
@@ -74,7 +75,6 @@ def word_to_bin(word: str, binDict: dict) -> str:
     return bits
 
 
-
 def prepare_to_write(table: dict, text: str) -> list:
     toWrite = ""
 
@@ -85,8 +85,6 @@ def shannon_encoder(inputFile: str, outputFile: str):
 
     table_of_binary_values = to_binary_table(table_of_probabilities, len(word))
     text_in_binary = word_to_bin(word, table_of_binary_values)
-
-    print(table_of_binary_values)
     prepare_to_write(table_of_binary_values, text_in_binary)
     write_output_to_file(table_of_binary_values, text_in_binary, outputFile)
     read_from_bin(outputFile, "antras.txt")
@@ -104,23 +102,24 @@ def write_output_to_file(table: dict, text: str, filename: str) -> bool:
                 tableDataToString += v
 
             total_bits = len(tableDataToString)
-
             diff = 8 - total_bits % 8
-
             tableSize = bitarray(f'{int((total_bits + diff) / Byte):016b}')
-
             tableSizepadding = bitarray(f'{diff:08b}')
-
             tableWithExtraZeros = diff * '0' + tableDataToString
 
-            print("Lenteles dydis: ", total_bits)
-            print("Lenteles paddingas: ", diff)
-            print(tableWithExtraZeros)
             tableSize.tofile(file)
             tableSizepadding.tofile(file)
             bitarray(tableWithExtraZeros).tofile(file)
-            bitarray(text).tofile(file)
 
+            difftext = Byte - len(text) % Byte
+            total_data_bits = len(text)
+            textWithZeros = difftext * '0' + text
+            textSizepadding = bitarray(f'{difftext:08b}')
+            textsize = bitarray(f'{int((total_data_bits + difftext) / Byte):016b}')
+
+            bitarray(textsize).tofile(file)
+            bitarray(textSizepadding).tofile(file)
+            bitarray(textWithZeros).tofile(file)
             return True
 
     except OSError:
@@ -128,34 +127,36 @@ def write_output_to_file(table: dict, text: str, filename: str) -> bool:
     return False
 
 
-def read_from_bin(input_file: str, output_file: str):
+def write_letter_to_file(output_file: str, text: str) -> bool:
+    try:
+        with open(output_file, "w") as output_stream:
+            output_stream.write(text)
+        return True
+    except OSError:
+        print("Failas nerastas")
+    return False
+
+
+def read_from_bin(input_file: str, output_file: str) -> dict:
     """Decompresses the data and writes it out to the output file"""
     try:
         with open(input_file, "rb") as input_stream, open(output_file, "wb") as output_stream:
-
-            print("#######################################")
             # read the size of encoded table 2B 16 bits
-            size_of_encoded_table = int.from_bytes(input_stream.read(2), "big") #kazkodel size gaunasi iki failo galo...
-
+            size_of_encoded_table = int.from_bytes(input_stream.read(2), "big")
             # read the size of encoded table padding 1B
             table_padding = int.from_bytes(input_stream.read(1), "big")
 
-            print("Lenteles dydis: ", size_of_encoded_table )
-            print("Lenteles paddingas: ", table_padding )
-
-
             encoded_table = ""
-            #encoded_table = bitarray()               is esmes kol kas jokio skirtumo kur laikom
             for bit in input_stream.read(size_of_encoded_table):
                 encoded_table += f"{bin(bit)[2:]:0>8}"
             encoded_table = encoded_table[table_padding:]
-            print(encoded_table)
 
-            # for i in range(0, len(encoded_table), 40):
-            #     ascii_string = "".join([str(int(binary, 2)) for binary in encoded_table[i:i+16]])
+            text_length = int.from_bytes(input_stream.read(2), "big")
+            text_padding = int.from_bytes(input_stream.read(1), "big")
+            print(text_length)
+            print(text_padding)
+
             dictionary = {}
-
-
             i = 0
             while i < len(encoded_table):
                 symbol = bitarray(encoded_table[i:i+8]).tobytes().decode('utf-8')
@@ -163,16 +164,22 @@ def read_from_bin(input_file: str, output_file: str):
                 bits = encoded_table[i+16:i+16+size_bits]
                 dictionary.update({symbol: bits})
                 i += 16+size_bits
+            print(text_length)
 
-            print(dictionary)
-            str = "01101011"
-            bandom = bitarray(str).tobytes().decode('utf-8')
-            size = encoded_table[8:16]
-            bandom2 = int(size, 2)
-            print(bandom, int(size, 2))
+            encoded_text = ""
+            for bit in input_stream.read(text_length):
+                encoded_text += f"{bin(bit)[2:]:0>8}"
+            encoded_text = encoded_text[text_padding:]
 
-
-            #print(ascii_string)
+            symbol = ""
+            decoded_text = ""
+            for bit in encoded_text:
+                symbol += bit
+                for key, value in dictionary.items():
+                    if symbol == value:
+                        decoded_text += key
+                        symbol = ""
+            write_letter_to_file(output_file, decoded_text)
 
     except OSError:
         print("Failas nerastas.")
@@ -180,4 +187,3 @@ def read_from_bin(input_file: str, output_file: str):
 
 if __name__ == '__main__':
     shannon_encoder("test.txt", "answer.bin")
-    #read_from_bin("answer.bin", "antras.txt")
