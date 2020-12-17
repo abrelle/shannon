@@ -143,7 +143,7 @@ def read_from_bin(input_file: str, output_file: str):
             print(type(encoded_table))
 
             for i in range(0, len(encoded_table), 40):
-                ascii_string = "".join([str(int(binary, 2)) for binary in encoded_table[i:i+16]            
+                ascii_string = "".join([str(int(binary, 2)) for binary in encoded_table[i:i + 16]])      #sorri pameciau galiuka      
 
     except OSError:
         print("Failas nerastas.")
